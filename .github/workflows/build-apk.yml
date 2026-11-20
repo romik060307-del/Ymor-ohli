@@ -1,0 +1,95 @@
+name: Build Ymor APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "androidApp/**"
+      - "shared/**"
+      - "opusDecoder/**"
+      - "listenTogetherProto/**"
+      - "metroproto/**"
+      - ".github/workflows/build-android.yml"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ymor-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Ymor source
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android build packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-37" \
+            "build-tools;37.0.0" \
+            "ndk;30.0.16248370" \
+            "cmake;4.1.2"
+
+      - name: Restore source-only submodules for ZIP uploads
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! find metroproto -maxdepth 1 -type f -name '*.proto' -print -quit 2>/dev/null | grep -q .; then
+            rm -rf metroproto
+            git clone --depth 1 https://github.com/MetrolistGroup/metroproto.git metroproto
+          fi
+          if [[ ! -f opusDecoder/src/main/jni/libopus/CMakeLists.txt ]]; then
+            rm -rf opusDecoder/src/main/jni/libopus
+            git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git opusDecoder/src/main/jni/libopus
+          fi
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Ymor APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :androidApp:assembleDebug
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK="$(find androidApp/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" dist/Ymor.apk
+          sha256sum dist/Ymor.apk | tee dist/SHA256SUMS.txt
+
+      - name: Upload Ymor APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ymor-Android-APK
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
