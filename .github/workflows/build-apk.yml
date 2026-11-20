@@ -1,35 +1,3 @@
-name: Build Ymor APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - "androidApp/**"
-      - "shared/**"
-      - "opusDecoder/**"
-      - "listenTogetherProto/**"
-      - "metroproto/**"
-      - ".github/workflows/build-android.yml"
-      - "gradle/**"
-      - "*.gradle.kts"
-      - "gradle.properties"
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ymor-android-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  build:
-    name: Build Android APK
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - name: Checkout Ymor source
-        uses: actions/checkout@v4
         with:
           submodules: false
 
